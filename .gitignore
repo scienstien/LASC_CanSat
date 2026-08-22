@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+results/
+results_selftest/
+sample_flight.csv
