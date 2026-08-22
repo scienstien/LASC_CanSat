@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-# LASC_CanSat
-=======
-# CanSat Descent Analysis — Ground Station
+# LASC_CanSat — CanSat Descent Analysis — Ground Station
 
 Offline analysis of rocket-recovery descent data. Reads the flight CSV from the
 recovered SD card and returns damping, drag area, and a performance assessment.
@@ -104,4 +101,3 @@ Run it after any change.
 - bias calibration recorded and its temperature noted
 - `--mass`, `--riser`, `--diameter` measured on the recovered vehicle
 - `--inertia` if rotational energy is wanted in joules rather than J/(kg·m²)
->>>>>>> master
