@@ -82,7 +82,7 @@ def _checkpoint(name: str, obj, out_dir: str | None) -> None:
 # =============================================================================
 def run(csv_path: str, cfg: Config, out_dir: str = "results",
         bias_file: str | None = None, stop_after: str | None = None,
-        checkpoint_dir: str | None = None) -> dict:
+        checkpoint_dir: str | None = None, deploy_ms: int | None = None) -> dict:
 
     # --- 1 load -------------------------------------------------------------
     df, load_report = load.load_csv(csv_path)
@@ -95,7 +95,7 @@ def run(csv_path: str, cfg: Config, out_dir: str = "results",
         bias, cfg.bias_temp_c = load.load_bias(bias_file)
 
     # --- 2 preprocess -------------------------------------------------------
-    df, raw, pre = preprocess.run(df, cfg, bias)
+    df, raw, pre = preprocess.run(df, cfg, bias, deploy_ms=deploy_ms)
     _checkpoint("2_preprocess", pre, checkpoint_dir)
     if checkpoint_dir:
         df.to_csv(os.path.join(checkpoint_dir, "stage_2_preprocessed.csv"),
@@ -175,7 +175,8 @@ def print_summary(r: dict) -> None:
     print("=" * 68)
     print(f"  samples            {L['n_rows_raw']} over {L['duration_s']:.1f} s")
     print(f"  sample rate        {p['fs_hz']:.1f} Hz  (jitter {p['jitter_pct']:.2f}%)")
-    print(f"  deployment at      t = {p['deployment_at_s']:.2f} s from record start")
+    print(f"  deployment at      t = {p['deployment_at_s']:.2f} s from record start "
+          f"[{p['deployment_method']}]")
     print(f"  gyro bias          {np.round(p['bias_rads'], 5).tolist()} rad/s"
           f"  [{p['bias_source']}]")
     print(f"  pendulum estimate  {p['pendulum_estimate_hz']:.3f} Hz")
@@ -280,6 +281,9 @@ def main() -> None:
     ap.add_argument("csv", nargs="?", help="flight CSV from the SD card")
     ap.add_argument("--bias-file", default=None,
                     help="pre-flight gyro stillness calibration CSV")
+    ap.add_argument("--deploy-ms", type=int, default=None,
+                    help="override deployment instant (raw t_ms), instead of "
+                         "inferring it from the accelerometer")
     ap.add_argument("--out", default="results")
     ap.add_argument("--mass", type=float, default=0.35, help="descending mass, kg")
     ap.add_argument("--riser", type=float, default=0.50,
@@ -310,7 +314,8 @@ def main() -> None:
                  design_cda_m2=args.design_cda,
                  cutoff_hz_override=args.cutoff, cutoff_margin=args.margin)
     print_summary(run(args.csv, cfg, args.out, bias_file=args.bias_file,
-                      stop_after=args.stop_after, checkpoint_dir=args.checkpoint))
+                      stop_after=args.stop_after, checkpoint_dir=args.checkpoint,
+                      deploy_ms=args.deploy_ms))
 
 
 if __name__ == "__main__":

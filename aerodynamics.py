@@ -270,6 +270,9 @@ if __name__ == "__main__":
     ap.add_argument("--bias-file", default=None)
     ap.add_argument("--mass", type=float, default=0.35)
     ap.add_argument("--riser", type=float, default=0.50)
+    ap.add_argument("--deploy-ms", type=int, default=None,
+                    help="override deployment instant (raw t_ms), instead of "
+                         "inferring it from the accelerometer")
     ap.add_argument("--no-oscillation", action="store_true",
                     help="skip stage 3; no period, so no window snapping")
     args = ap.parse_args()
@@ -279,7 +282,7 @@ if __name__ == "__main__":
     bias = None
     if args.bias_file:
         bias, cfg.bias_temp_c = load_bias(args.bias_file)
-    df, _, pre = preprocess.run(df, cfg, bias)
+    df, _, pre = preprocess.run(df, cfg, bias, deploy_ms=args.deploy_ms)
 
     period = None
     if not args.no_oscillation:

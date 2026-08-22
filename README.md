@@ -48,6 +48,14 @@ python -m descent.oscillation  flight.csv --bias-file bias.csv
 python -m descent.aerodynamics flight.csv --no-oscillation
 ```
 
+`--deploy-ms <int>` overrides the deployment instant (a raw `t_ms` value) on
+any of `main.py`, `preprocess.py`, `oscillation.py`, or `aerodynamics.py`,
+instead of inferring it from the accelerometer. It must fall within the
+file's `t_ms` range, snaps to the nearest logged sample, and warns (without
+stopping) if it leaves under 20% of the record. How deployment was
+determined -- inferred or manual, with any snap distance -- is recorded in
+`deployment_method` in `results.json`.
+
 Halt the pipeline mid-way, or keep every stage's output:
 
 ```bash
@@ -63,6 +71,9 @@ preprocessed CSV, so a failure in a late stage leaves the earlier ones on disk.
 **Flight CSV** — required columns:
 `t_ms, gx_dps, gy_dps, gz_dps, pressure_pa, temp_c, rh_pct`
 optional: `ax_ms2, ay_ms2, az_ms2, gps_alt_m`
+
+`t_ms` is milliseconds since system boot, not since deployment -- it is what
+`--deploy-ms` is given in terms of.
 
 Raw `pressure_pa` is required. Air density cannot be reconstructed from an
 onboard-derived altitude, and the onboard conversion embeds a fixed

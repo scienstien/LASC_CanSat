@@ -92,7 +92,7 @@ def load_csv(path: str) -> tuple[pd.DataFrame, dict]:
         v = df[col].to_numpy(dtype=np.float64)
         same = np.concatenate([[False], v[1:] == v[:-1]])
         n = longest_run(same)
-        if n >= 20:
+        if n >= 100:
             warnings.warn(f"'{col}': {n} consecutive identical values "
                           f"-- possible stale sensor reads.")
         report["suspected_stale"][col] = int(n)

@@ -282,6 +282,9 @@ if __name__ == "__main__":
     ap.add_argument("csv")
     ap.add_argument("--bias-file", default=None)
     ap.add_argument("--riser", type=float, default=0.50)
+    ap.add_argument("--deploy-ms", type=int, default=None,
+                    help="override deployment instant (raw t_ms), instead of "
+                         "inferring it from the accelerometer")
     args = ap.parse_args()
 
     cfg = Config(riser_length_m=args.riser)
@@ -289,7 +292,7 @@ if __name__ == "__main__":
     bias = None
     if args.bias_file:
         bias, cfg.bias_temp_c = load_bias(args.bias_file)
-    df, _, pre = preprocess.run(df, cfg, bias)
+    df, _, pre = preprocess.run(df, cfg, bias, deploy_ms=args.deploy_ms)
     out = analyse(df, cfg, pre["fs_hz"])
 
     slim = {"pca": {k: v for k, v in out["pca"].items()
