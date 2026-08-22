@@ -187,7 +187,7 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     cfg = Config(riser_length_m=args.riser)
-    df, _ = load_csv(args.csv)
+    df, _ = load_csv(args.csv, max_nan_gap=cfg.max_nan_gap_samples)
     bias = None
     if args.bias_file:
         bias, cfg.bias_temp_c = load_bias(args.bias_file)

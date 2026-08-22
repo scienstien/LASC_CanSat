@@ -85,7 +85,7 @@ def run(csv_path: str, cfg: Config, out_dir: str = "results",
         checkpoint_dir: str | None = None, deploy_ms: int | None = None) -> dict:
 
     # --- 1 load -------------------------------------------------------------
-    df, load_report = load.load_csv(csv_path)
+    df, load_report = load.load_csv(csv_path, max_nan_gap=cfg.max_nan_gap_samples)
     _checkpoint("1_load", load_report, checkpoint_dir)
     if stop_after == "load":
         return {"stopped_after": "load", "load": _clean(load_report)}

@@ -51,6 +51,10 @@ class Config:
     # --- quality gates ------------------------------------------------------
     mad_threshold: float = 5.0       # outlier rejection
     accel_gate_frac: float = 0.15    # ||a|-g| > this*g flags non-quasi-steady
+    max_nan_gap_samples: int = 15    # NaN runs up to this long are linearly
+                                      # interpolated at load time; longer runs
+                                      # are treated as a real sensor outage
+                                      # (raise) rather than bridged.
 
     # ------------------------------------------------------------------------
     def pendulum_frequency_hz(self) -> float:

@@ -32,7 +32,14 @@ REQUIRED = ["t_ms", "gx_dps", "gy_dps", "gz_dps",
 
 
 def longest_run(mask: np.ndarray) -> int:
-    """Length of the longest run of True in a boolean array."""
+    """Length of the longest run of True in a boolean array.
+
+    Calibrated for a diff-encoded mask (like `same` below, which compares
+    each sample to its predecessor with a leading False): the first sample of
+    a run never appears as True in that encoding, so the +1 corrects for it.
+    Do NOT call this on a raw True/False mask (e.g. np.isnan(x)) expecting the
+    literal run length -- it will overcount by one. Use _run_lengths for that.
+    """
     best = run = 0
     for m in mask:
         run = run + 1 if m else 0
@@ -40,12 +47,83 @@ def longest_run(mask: np.ndarray) -> int:
     return best + 1 if best else 0
 
 
-def load_csv(path: str) -> tuple[pd.DataFrame, dict]:
+def _run_lengths(mask: np.ndarray) -> np.ndarray:
+    """Lengths of every contiguous run of True in a raw boolean array."""
+    if mask.size == 0:
+        return np.array([], dtype=int)
+    padded = np.concatenate(([False], mask, [False]))
+    edges = np.diff(padded.astype(np.int8))
+    starts = np.flatnonzero(edges == 1)
+    ends = np.flatnonzero(edges == -1)
+    return ends - starts
+
+
+def _fill_nan_gaps(df: pd.DataFrame, cols: list[str],
+                    max_gap: int) -> tuple[pd.DataFrame, dict]:
+    """Bridge short NaN runs; trim unrecoverable edges; reject long interior gaps.
+
+    Stage 2's filtfilt is IIR (recursive): a single NaN anywhere in a channel
+    poisons the ENTIRE output, not just the neighbourhood of the gap. NaNs
+    have to be resolved here, before anything downstream touches the data --
+    there is no fixing this after the filter has run.
+
+    A short gap is safe to bridge with a straight line: the filter cutoff
+    (Stage 2) throws away anything faster than a few Hz anyway, so a short
+    linear fill is indistinguishable from noise once filtered. A gap longer
+    than max_gap is left alone and raises -- drawing a long straight line
+    across a real sensor outage would fabricate data, not recover it.
+    Leading/trailing runs (nothing to interpolate from) are trimmed instead
+    of guessed at.
+    """
+    df = df.copy()
+    report: dict = {}
+    for col in cols:
+        isnan = np.isnan(df[col].to_numpy(dtype=np.float64))
+        n_nan = int(isnan.sum())
+        runs = _run_lengths(isnan)
+        report[col] = {"n_nan": n_nan,
+                        "longest_gap": int(runs.max()) if runs.size else 0,
+                        "n_gaps": int(runs.size)}
+        if n_nan:
+            df[col] = df[col].interpolate(method="linear", limit=max_gap,
+                                           limit_area="inside")
+
+    still_bad = df[cols].isna().any(axis=1).to_numpy()
+    report["rows_trimmed"] = 0
+    if still_bad.any():
+        valid = np.flatnonzero(~still_bad)
+        if valid.size == 0:
+            raise ValueError(f"Columns {cols}: every row has an unrecoverable NaN.")
+        first, last = int(valid[0]), int(valid[-1])
+        if still_bad[first:last + 1].any():
+            offenders = {c: report[c]["longest_gap"] for c in cols
+                         if report[c]["longest_gap"] > max_gap}
+            raise ValueError(
+                f"NaN gap(s) exceed max_nan_gap={max_gap} sample(s) and cannot "
+                f"be bridged: {offenders} (column: longest gap in samples). "
+                f"This looks like a real sensor outage, not a dropout -- verify "
+                f"the record before raising --max-nan-gap to cover it."
+            )
+        n_trimmed = len(df) - (last - first + 1)
+        if n_trimmed:
+            warnings.warn(
+                f"Trimming {n_trimmed} row(s) at the start/end of the record -- "
+                f"unrecoverable NaNs with no valid sample to interpolate from."
+            )
+        df = df.iloc[first:last + 1].reset_index(drop=True)
+        report["rows_trimmed"] = n_trimmed
+    return df, report
+
+
+def load_csv(path: str, max_nan_gap: int = 15) -> tuple[pd.DataFrame, dict]:
     """Read the flight CSV with dtypes forced, not inferred.
 
     CSV carries no type information, so one malformed row can silently turn a
     numeric column into strings and every number downstream becomes wrong
     without an error. Declaring dtypes makes that a failure instead.
+
+    max_nan_gap: NaN runs up to this many samples (in any sensor column) are
+    linearly interpolated -- see _fill_nan_gaps. Longer runs raise.
     """
     df = pd.read_csv(path, dtype={c: "float64" for c in COLUMNS})
 
@@ -61,6 +139,18 @@ def load_csv(path: str) -> tuple[pd.DataFrame, dict]:
         raise ValueError("CSV contains no rows.")
 
     report: dict = {"n_rows_raw": int(len(df))}
+
+    # --- NaN gaps -------------------------------------------------------------
+    # t_ms is not interpolable (it's the time axis itself); a NaN there is a
+    # corrupt row, not a dropout.
+    if df["t_ms"].isna().any():
+        raise ValueError("t_ms contains NaN -- cannot repair the time axis itself.")
+    sensor_cols = [c for c in
+                   ("gx_dps", "gy_dps", "gz_dps", "pressure_pa", "temp_c",
+                    "rh_pct", "ax_ms2", "ay_ms2", "az_ms2") if c in df.columns]
+    df, nan_report = _fill_nan_gaps(df, sensor_cols, max_nan_gap)
+    report["nan_gaps"] = nan_report
+    report["n_rows_after_nan_trim"] = int(len(df))
 
     # --- timestamp ----------------------------------------------------------
     t = df["t_ms"].to_numpy(dtype=np.float64)
@@ -131,9 +221,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Stage 1: load and check a flight CSV")
     ap.add_argument("csv")
     ap.add_argument("--bias-file", default=None)
+    ap.add_argument("--max-nan-gap", type=int, default=15,
+                    help="longest NaN run (samples) to bridge by linear "
+                         "interpolation; longer runs raise (default: 15)")
     args = ap.parse_args()
 
-    df, rep = load_csv(args.csv)
+    df, rep = load_csv(args.csv, max_nan_gap=args.max_nan_gap)
     print(json.dumps(rep, indent=2))
     print(f"\ncolumns: {list(df.columns)}")
     print(df.head())
